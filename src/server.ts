@@ -2,6 +2,7 @@ import { IncomingMessage, ServerResponse, createServer } from 'node:http'
 import * as fs from 'node:fs'
 import * as path from 'node:path'
 import { v4 as uuid } from 'uuid'
+import 'dotenv/config'
 import { User } from './models/user'
 import { toCreateUser } from './adapters/to-create-user.ts'
 import { CreateUser } from './models/create-user'
@@ -33,10 +34,6 @@ const server = createServer((req, res: ServerResponse) => {
     default:
       error404(res)
   }
-  // console.log('User-Agent:', req.headers['user-agent'])
-  // console.log('Все заголовки')
-  // console.log(req.headers)
-  // res.end()
 })
 
 const error404 = (res: ServerResponse) => {
@@ -175,6 +172,8 @@ const checkUUID = (uuid: string): boolean => {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(uuid)
 }
 
-server.listen(3000, () => {
-  console.log('Listening on port 3000...')
+const PORT = process.env.PORT || 3000
+
+server.listen(PORT, () => {
+  console.log(`Listening on port ${PORT}...`)
 })
