@@ -16,15 +16,19 @@ const server = createServer((req, res: ServerResponse) => {
     error404(res)
     return
   }
+  const id = req.url!.slice('/api/users/'.length)
   switch (req.method) {
     case 'GET':
-      getMethod(req.url!, res)
+      getMethod(id, res)
       break
     case 'POST':
       createUser(req, res)
       break
     case 'DELETE':
-      deleteUserById(req.url!.slice('/api/users/'.length), res)
+      deleteUserById(id, res)
+      break
+    case 'PUT':
+      updateUserById(id, req, res)
       break
     default:
       error404(res)
@@ -41,48 +45,50 @@ const error404 = (res: ServerResponse) => {
   console.log('Unknown url')
 }
 
-const getMethod = (url: string, res: ServerResponse) => {
-  const param = url.slice('/api/users/'.length)
-  if (param === '') {
+const getMethod = (id: string, res: ServerResponse) => {
+  if (id === '') {
     getAllUsers(res)
   } else {
-    getUserById(param, res)
+    getUserById(id, res)
   }
 }
 
-const createUser = (req: IncomingMessage, res: ServerResponse) => {
-  const body: Uint8Array[] = []
-  req.on('data', (chunk: any) => {
-    body.push(chunk)
-  })
-  req.on('end', () => {
-    const bodyString = Buffer.concat(body).toString()
-    try {
-      const user: CreateUser = toCreateUser(JSON.parse(bodyString))
-      const lostFields = []
-      if (!user.username) lostFields.push('username')
-      if (!user.age) lostFields.push('age')
-      if (!user.hobbies || !Array.isArray(user.hobbies)) lostFields.push('hobbies')
-      if (lostFields.length > 0) {
-        res.writeHead(400, { 'Content-Type': 'text/html' })
-        res.end(`<h1>400 User not created</h1><p>fields ${lostFields.join(', ')} required</p>`)
-        console.log('User not created, fields', lostFields, 'reqiered')
-        return
-      }
-      const newUser = {
-        id: uuid(),
-        ...user,
-      }
-      userList.push(newUser)
-      res.writeHead(201, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify(newUser))
-      console.log('User created', newUser)
-    } catch (e) {
-      res.writeHead(400, { 'Content-Type': 'text/html' })
-      res.end('<h1>400 Parse JSON error</h1>')
-      console.log('User not created, error', e)
-    }
-  })
+const createUser = async (req: IncomingMessage, res: ServerResponse) => {
+  const body = await getBody(req)
+  const user = checkFields(body, res)
+  if (!user) return
+  const newUser = {
+    id: uuid(),
+    ...user,
+  }
+  userList.push(newUser)
+  res.writeHead(201, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify(newUser))
+  console.log('User created', newUser)
+}
+
+const updateUserById = async (id: string, req: IncomingMessage, res: ServerResponse) => {
+  if (!checkUUID(id)) {
+    res.writeHead(400, { 'Content-Type': 'text/html' })
+    res.end('<h1>400 Bad UUID</h1>')
+    console.log('Update user by id, bad uuid', id)
+    return
+  }
+  const index = userList.findIndex(user => user.id === id)
+  if (index === -1) {
+    res.writeHead(404, { 'Content-Type': 'text/html' })
+    res.end('<h1>404 User not found</h1>')
+    console.log('Update user by id, not found', id)
+    return
+  }
+  const body = await getBody(req)
+  const user = checkFields(body, res)
+  if (!user) return
+  const newUser: User = { id, ...user }
+  userList[index] = newUser
+  res.writeHead(200, { 'Content-Type': 'application/json' })
+  res.end(JSON.stringify(newUser))
+  console.log('Update user by id', index)
 }
 
 const getAllUsers = (res: ServerResponse<IncomingMessage>) => {
@@ -128,6 +134,41 @@ const deleteUserById = (id: string, res: ServerResponse<IncomingMessage>) => {
   res.writeHead(204, { 'Content-Type': 'application/json' })
   res.end()
   console.log('Delete user by id', user)
+}
+
+const getBody = async (req: IncomingMessage): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const body: Uint8Array[] = []
+    req.on('data', (chunk: any) => {
+      body.push(chunk)
+    })
+    req.on('end', () => {
+      const bodyString = Buffer.concat(body).toString()
+      resolve(bodyString)
+    })
+  })
+}
+
+const checkFields = (body: string, res: ServerResponse): CreateUser | null => {
+  try {
+    const user: CreateUser = toCreateUser(JSON.parse(body))
+    const lostFields = []
+    if (!user.username) lostFields.push('username')
+    if (!user.age) lostFields.push('age')
+    if (!user.hobbies || !Array.isArray(user.hobbies)) lostFields.push('hobbies')
+    if (lostFields.length > 0) {
+      res.writeHead(400, { 'Content-Type': 'text/html' })
+      res.end(`<h1>400 User not created</h1><p>fields ${lostFields.join(', ')} required</p>`)
+      console.log('User not created, fields', lostFields, 'reqiered')
+      return null
+    }
+    return user
+  } catch (e) {
+    res.writeHead(400, { 'Content-Type': 'text/html' })
+    res.end('<h1>400 Parse JSON error</h1>')
+    console.log('User not created, error', e)
+    return null
+  }
 }
 
 const checkUUID = (uuid: string): boolean => {
